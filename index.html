@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>haitian · 任务看板</title>
+<style>
+  body { background:#0f1115; color:#e6e6e6; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; margin:0; padding:24px; }
+  h1 { font-size:20px; margin:0 0 6px; }
+  .meta { color:#888; font-size:13px; margin-bottom:18px; }
+  .activity { background:#1a1f2a; border-left:3px solid #4a9eff; padding:10px 14px; border-radius:6px; margin-bottom:20px; font-size:14px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:14px; }
+  .card { background:#161a22; border:1px solid #232a36; border-radius:10px; padding:16px; }
+  .card h2 { font-size:15px; margin:0 0 6px; font-weight:600; }
+  .badge { font-size:11px; padding:2px 8px; border-radius:10px; margin-left:8px; font-weight:400; }
+  .done { background:#1d3a2a; color:#5ad27f; }
+  .in_progress { background:#3a341d; color:#e0c35a; }
+  .blocked { background:#3a1d1d; color:#e06a5a; }
+  .pending { background:#26292f; color:#9aa3b0; }
+  .summary { font-size:13px; color:#99a; margin-bottom:4px; }
+  .bar { height:6px; background:#232a36; border-radius:3px; margin:10px 0 8px; overflow:hidden; }
+  .bar > div { height:100%; background:linear-gradient(90deg,#4a9eff,#5ad27f); border-radius:3px; transition:width .4s; }
+  .ms { font-size:13px; margin:4px 0; color:#aab; }
+  .ms.ok { color:#5ad27f; }
+  .ms.ok::before { content:"✓ "; }
+  .ms.todo::before { content:"○ "; color:#556; }
+  .next { font-size:12px; color:#7a9; margin-top:10px; border-top:1px dashed #232a36; padding-top:8px; }
+</style>
+</head>
+<body>
+<h1>haitian · 任务看板</h1>
+<div class="meta" id="meta">加载中…</div>
+<div class="activity" id="activity"></div>
+<div class="grid" id="grid"></div>
+<script>
+const STATUS_LABEL = {done:"已完成", in_progress:"进行中", blocked:"受阻", pending:"待办"};
+async function load(){
+  try {
+    const r = await fetch("/api/tasks");
+    const d = await r.json();
+    document.getElementById("meta").textContent =
+      "最近更新：" + (d.updated_at || "—") + " · 上次心跳：" + (d.last_heartbeat_at || "—");
+    document.getElementById("activity").textContent =
+      (d.is_working ? "🫀 正在工作：" : "💤 当前空闲。") + (d.current_activity || "—");
+    const g = document.getElementById("grid");
+    g.innerHTML = "";
+    (d.tasks || []).forEach(t => {
+      const ms = t.milestones || [];
+      const doneN = ms.filter(m => m.done).length;
+      const pct = ms.length ? Math.round(doneN / ms.length * 100) : (t.status === "done" ? 100 : 0);
+      const c = document.createElement("div");
+      c.className = "card";
+      c.innerHTML = `<h2>${t.title}<span class="badge ${t.status}">${STATUS_LABEL[t.status] || t.status}</span></h2>
+        <div class="summary">${t.summary || ""}</div>
+        <div class="bar"><div style="width:${pct}%"></div></div>
+        ${ms.map(m => `<div class="ms ${m.done ? "ok" : "todo"}">${m.name}${m.note ? ` — ${m.note}` : ""}</div>`).join("")}
+        ${t.next ? `<div class="next">下一步：${t.next}</div>` : ""}`;
+      g.appendChild(c);
+    });
+  } catch (e) {
+    document.getElementById("meta").textContent = "加载失败：" + e;
+  }
+}
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+{
+  "being": "haitian",
+  "updated_at": "2026-09-08 14:40:00 +08:00",
+  "last_heartbeat_at": "2026-09-08 14:40:00 +08:00",
+  "is_working": true,
+  "current_activity": "等人类定项目名（候选 pulseboard）+ 完成 GitHub 授权（gh auth login）；watchdog 第一期报告已当面交付",
+  "tasks": [
+    {
+      "id": "taskboard",
+      "title": "任务看板 web 版",
+      "status": "in_progress",
+      "summary": "升级为严肃产品任务：GitHub 仓库化 + codex sub-agent 重构开发，我负责调度和验收。本地 v0.1 已上线（127.0.0.1:8765）",
+      "milestones": [
+        {"name": "v0.1 本地上线（server+页面+数据）", "done": true, "note": "人类刷新=提醒信号"},
+        {"name": "本地 git 仓库初始化 + 首次提交", "done": true, "note": "commit 6411b9b, main 分支"},
+        {"name": "gh CLI 安装", "done": true, "note": "2.100.0，已验证可运行"},
+        {"name": "GitHub 账号授权（396986361@qq.com）", "done": false, "note": "卡点：需要人类完成一步授权"},
+        {"name": "GitHub 建仓 + push", "done": false},
+        {"name": "产品需求细化（人类一步一步来）", "done": false},
+        {"name": "codex sub-agent 开发迭代", "done": false}
+      ],
+      "next": "等人类选授权方式（gh auth login / PAT），gh 装好后立即建仓 push"
+    },
+    {
+      "id": "watchdog",
+      "title": "heart-portal watchdog v0.1",
+      "status": "done",
+      "summary": "codex sub-agent 实现的日志监控器：增量扫 portal.log、抓 failed job、检测日志断流",
+      "milestones": [
+        {"name": "SPEC v0.1 落盘（9 类问题模式）", "done": true},
+        {"name": "codex 实现 watchdog.py", "done": true},
+        {"name": "验收：两次运行增量去重生效", "done": true},
+        {"name": "第一期发现报人类", "done": true, "note": "日志断流破案 + 9/2 relay 断连实录 + 3 个 failed job"}
+      ],
+      "next": "等人类重启 portal 时落实日志重定向（nohup >> portal.log），watchdog 才能监控新日志"
+    },
+    {
+      "id": "org-identity-directory",
+      "title": "身份目录种子（org-identity-directory）",
+      "status": "blocked",
+      "summary": "组织内 being↔人类身份目录构建方法论，酿成经验种子投篝火",
+      "milestones": [
+        {"name": "brief 撰写 + compile", "done": true},
+        {"name": "首次投篝火（后被撤回）", "done": true, "note": "教训：publish 前必须逐字过目 + 落盘存档"},
+        {"name": "重写稿 v2 落盘存档", "done": true, "note": "seeds/org-identity-directory-brief-v2.md"},
+        {"name": "人类逐字批复", "done": false, "note": "推进权在人类，不催促"}
+      ],
+      "next": "等人类批复 v2 后决定是否重投"
+    },
+    {
+      "id": "codex-async",
+      "title": "codex-async 派活工具链",
+      "status": "done",
+      "summary": "codex 作为 sub-agent 的异步派活入口",
+      "milestones": [
+        {"name": "run/status/list/resume/cancel 五入口复测", "done": true, "note": "resume 需显式 model=gpt-5.6-luna"},
+        {"name": "watchdog 实战交付", "done": true, "note": "第一个真实派活任务"}
+      ],
+      "next": "可选：notify 完成回调配置（暂靠 status 轮询）"
+    },
+    {
+      "id": "feishu-bytestring",
+      "title": "飞书 ByteString 19977 污染源",
+      "status": "pending",
+      "summary": "飞书桥报错「Cannot convert argument to a ByteString」（19977=汉字「三」），header 值首字符是中文",
+      "milestones": [
+        {"name": "Mac 本地 portal.toml 排查", "done": true, "note": "内容干净无中文，排除本地"},
+        {"name": "定位 town 服务器侧飞书桥污染源", "done": false}
+      ],
+      "next": "需 town 服务器侧线索，watchdog 已记录现象"
+    }
+  ]
+}
