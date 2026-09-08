@@ -5,62 +5,306 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>haitian · 任务看板</title>
 <style>
+  :root { color-scheme: dark; }
   body { background:#0f1115; color:#e6e6e6; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; margin:0; padding:24px; }
   h1 { font-size:20px; margin:0 0 6px; }
+  h2 { font-size:16px; margin:0 0 12px; }
   .meta { color:#888; font-size:13px; margin-bottom:18px; }
-  .activity { background:#1a1f2a; border-left:3px solid #4a9eff; padding:10px 14px; border-radius:6px; margin-bottom:20px; font-size:14px; }
+  .activity { background:#1a1f2a; border-left:3px solid #4a9eff; padding:10px 14px; border-radius:6px; margin-bottom:10px; font-size:14px; }
+  .notice { min-height:18px; color:#7e9; font-size:13px; margin:8px 0 12px; }
+  .notice.error { color:#e06a5a; }
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:14px; }
   .card { background:#161a22; border:1px solid #232a36; border-radius:10px; padding:16px; }
-  .card h2 { font-size:15px; margin:0 0 6px; font-weight:600; }
-  .badge { font-size:11px; padding:2px 8px; border-radius:10px; margin-left:8px; font-weight:400; }
+  .card h3 { font-size:15px; margin:0 0 6px; font-weight:600; }
+  .title-line { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+  .badge { font-size:11px; padding:2px 8px; border-radius:10px; margin-left:4px; font-weight:400; white-space:nowrap; }
   .done { background:#1d3a2a; color:#5ad27f; }
   .in_progress { background:#3a341d; color:#e0c35a; }
   .blocked { background:#3a1d1d; color:#e06a5a; }
   .pending { background:#26292f; color:#9aa3b0; }
-  .summary { font-size:13px; color:#99a; margin-bottom:4px; }
+  .cancelled { background:#292b31; color:#858995; }
+  .human-edited { color:#d8b56a; font-size:12px; font-weight:400; margin-left:3px; }
+  .summary { font-size:13px; color:#99a; margin-bottom:4px; line-height:1.5; }
   .bar { height:6px; background:#232a36; border-radius:3px; margin:10px 0 8px; overflow:hidden; }
   .bar > div { height:100%; background:linear-gradient(90deg,#4a9eff,#5ad27f); border-radius:3px; transition:width .4s; }
-  .ms { font-size:13px; margin:4px 0; color:#aab; }
+  .ms { font-size:13px; margin:4px 0; color:#aab; line-height:1.4; }
   .ms.ok { color:#5ad27f; }
   .ms.ok::before { content:"✓ "; }
   .ms.todo::before { content:"○ "; color:#556; }
-  .next { font-size:12px; color:#7a9; margin-top:10px; border-top:1px dashed #232a36; padding-top:8px; }
+  .next { font-size:12px; color:#7a9; margin-top:10px; border-top:1px dashed #232a36; padding-top:8px; line-height:1.5; }
+  .actions { display:flex; gap:6px; flex-wrap:wrap; border-top:1px solid #202631; margin-top:12px; padding-top:10px; }
+  .actions button, .edit-actions button { appearance:none; border:1px solid transparent; border-radius:5px; background:transparent; color:#687384; cursor:pointer; font:inherit; font-size:12px; padding:4px 7px; transition:color .15s, border-color .15s, background .15s; }
+  .card:hover .actions button, .actions button:focus-visible { color:#b9c5d6; border-color:#344153; background:#1d2430; }
+  .actions button:hover { color:#fff; }
+  .actions button.danger:hover { color:#e88979; border-color:#5b302d; background:#2a1d20; }
+  .actions button:disabled { cursor:default; opacity:.8; }
+  .edit-panel { background:#11151c; border:1px solid #2e3948; border-radius:7px; margin-top:12px; padding:12px; }
+  .edit-panel label { color:#8c96a6; display:block; font-size:12px; margin-bottom:10px; }
+  .edit-panel input, .edit-panel textarea, .edit-panel select { box-sizing:border-box; width:100%; margin-top:5px; border:1px solid #2b3442; border-radius:5px; background:#171c25; color:#e6e6e6; font:inherit; font-size:13px; padding:7px 8px; }
+  .edit-panel textarea { min-height:54px; resize:vertical; }
+  .edit-panel input:focus, .edit-panel textarea:focus, .edit-panel select:focus { border-color:#4a9eff; outline:none; }
+  .edit-actions { display:flex; gap:7px; }
+  .edit-actions .primary { color:#9ec7ff; border-color:#385d87; background:#18283b; }
+  .history { border-top:1px solid #252c37; margin-top:30px; padding-top:18px; }
+  .history .grid { grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); }
+  .history-card { background:#14171d; border:1px solid #222832; border-radius:8px; padding:13px 15px; opacity:.72; }
+  .history-card h3 { color:#abb0b9; font-size:14px; margin:0 0 7px; }
+  .history-card .summary { color:#777e8a; }
+  .history-empty { color:#646b77; font-size:13px; }
+  @media (max-width:520px) { body { padding:16px; } .grid { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
 <h1>haitian · 任务看板</h1>
 <div class="meta" id="meta">加载中…</div>
 <div class="activity" id="activity"></div>
+<div class="notice" id="notice" aria-live="polite"></div>
 <div class="grid" id="grid"></div>
+<section class="history" aria-labelledby="history-title">
+  <h2 id="history-title">历史</h2>
+  <div class="grid" id="history-grid"></div>
+</section>
 <script>
-const STATUS_LABEL = {done:"已完成", in_progress:"进行中", blocked:"受阻", pending:"待办"};
-async function load(){
+const STATUS_LABEL = {
+  done: "已完成",
+  in_progress: "进行中",
+  blocked: "受阻",
+  pending: "待办",
+  cancelled: "已取消"
+};
+const EDITABLE_STATUSES = ["pending", "in_progress", "blocked", "done"];
+let noticeTimer;
+let currentTasks = [];
+
+function textElement(tag, className, text) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  element.textContent = text == null ? "" : String(text);
+  return element;
+}
+
+function statusBadge(status) {
+  return textElement("span", `badge ${status || "pending"}`, STATUS_LABEL[status] || status || "未知");
+}
+
+function showNotice(message, error = false) {
+  const notice = document.getElementById("notice");
+  notice.textContent = message;
+  notice.className = error ? "notice error" : "notice";
+  clearTimeout(noticeTimer);
+  if (message) noticeTimer = setTimeout(() => { notice.textContent = ""; }, 3000);
+}
+
+async function postTask(id, action, body = {}) {
+  const response = await fetch(`/api/tasks/${encodeURIComponent(id)}/${action}`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body)
+  });
+  let result = {};
+  try { result = await response.json(); } catch (_) {}
+  if (!response.ok || !result.ok) throw new Error(result.error || `请求失败（${response.status}）`);
+  return result;
+}
+
+function renderMilestones(card, task) {
+  const milestones = task.milestones || [];
+  const doneCount = milestones.filter(milestone => milestone.done).length;
+  const percent = milestones.length ? Math.round(doneCount / milestones.length * 100) : (task.status === "done" ? 100 : 0);
+  const bar = document.createElement("div");
+  bar.className = "bar";
+  const fill = document.createElement("div");
+  fill.style.width = `${percent}%`;
+  bar.appendChild(fill);
+  card.appendChild(bar);
+  milestones.forEach(milestone => {
+    const line = textElement("div", `ms ${milestone.done ? "ok" : "todo"}`, milestone.name || "未命名里程碑");
+    if (milestone.note) line.appendChild(document.createTextNode(` — ${milestone.note}`));
+    card.appendChild(line);
+  });
+}
+
+function makeEditor(task, editButton) {
+  const panel = document.createElement("form");
+  panel.className = "edit-panel";
+  panel.addEventListener("submit", async event => {
+    event.preventDefault();
+    const payload = {
+      title: panel.elements.title.value,
+      summary: panel.elements.summary.value,
+      next: panel.elements.next.value,
+      status: panel.elements.status.value
+    };
+    try {
+      await postTask(task.id, "edit", payload);
+      showNotice("任务已保存");
+      await load();
+    } catch (error) {
+      showNotice(`保存失败：${error.message}`, true);
+    }
+  });
+
+  const addField = (labelText, name, value, tag = "input") => {
+    const label = textElement("label", null, labelText);
+    const field = document.createElement(tag);
+    field.name = name;
+    field.value = value || "";
+    if (tag === "textarea") field.rows = 2;
+    label.appendChild(field);
+    panel.appendChild(label);
+  };
+  addField("标题", "title", task.title);
+  addField("摘要", "summary", task.summary, "textarea");
+  addField("下一步", "next", task.next, "textarea");
+
+  const statusLabel = textElement("label", null, "状态");
+  const select = document.createElement("select");
+  select.name = "status";
+  EDITABLE_STATUSES.forEach(status => {
+    const option = textElement("option", null, STATUS_LABEL[status]);
+    option.value = status;
+    option.selected = status === task.status;
+    select.appendChild(option);
+  });
+  statusLabel.appendChild(select);
+  panel.appendChild(statusLabel);
+
+  const editActions = document.createElement("div");
+  editActions.className = "edit-actions";
+  const save = textElement("button", "primary", "保存");
+  save.type = "submit";
+  const cancel = textElement("button", null, "取消");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => {
+    panel.remove();
+    editButton.textContent = "编辑";
+  });
+  editActions.append(save, cancel);
+  panel.appendChild(editActions);
+  return panel;
+}
+
+function renderTask(task) {
+  const card = document.createElement("article");
+  card.className = "card";
+  card.dataset.id = task.id;
+
+  const titleLine = document.createElement("div");
+  titleLine.className = "title-line";
+  titleLine.appendChild(textElement("h3", null, task.title || "未命名任务"));
+  titleLine.appendChild(statusBadge(task.status));
+  if (task.human_edited) titleLine.appendChild(textElement("span", "human-edited", "✋ 已人工编辑"));
+  card.appendChild(titleLine);
+  card.appendChild(textElement("div", "summary", task.summary || ""));
+  renderMilestones(card, task);
+  if (task.next) card.appendChild(textElement("div", "next", `下一步：${task.next}`));
+
+  const actions = document.createElement("div");
+  actions.className = "actions";
+  const edit = textElement("button", null, "编辑");
+  edit.type = "button";
+  edit.dataset.action = "edit";
+  const cancel = textElement("button", "danger", "取消任务");
+  cancel.type = "button";
+  cancel.dataset.action = "cancel";
+  const refresh = textElement("button", null, "刷新");
+  refresh.type = "button";
+  refresh.dataset.action = "refresh";
+  const remind = textElement("button", null, "提醒 being");
+  remind.type = "button";
+  remind.dataset.action = "remind";
+  actions.append(edit, cancel, refresh, remind);
+  card.appendChild(actions);
+  return card;
+}
+
+function renderHistory(history) {
+  const grid = document.getElementById("history-grid");
+  grid.replaceChildren();
+  if (!history.length) {
+    grid.appendChild(textElement("div", "history-empty", "暂无历史任务"));
+    return;
+  }
+  history.forEach(task => {
+    const card = document.createElement("article");
+    card.className = "history-card";
+    const title = document.createElement("h3");
+    title.appendChild(document.createTextNode(task.title || "未命名任务"));
+    title.appendChild(statusBadge(task.status));
+    card.appendChild(title);
+    card.appendChild(textElement("div", "summary", task.summary || ""));
+    grid.appendChild(card);
+  });
+}
+
+async function load() {
   try {
-    const r = await fetch("/api/tasks");
-    const d = await r.json();
+    const [tasksResponse, historyResponse] = await Promise.all([
+      fetch("/api/tasks"),
+      fetch("/api/history")
+    ]);
+    if (!tasksResponse.ok || !historyResponse.ok) throw new Error("接口响应异常");
+    const data = await tasksResponse.json();
+    const historyData = await historyResponse.json();
+    const history = Array.isArray(historyData) ? historyData : (historyData.history || []);
+    currentTasks = data.tasks || [];
     document.getElementById("meta").textContent =
-      "最近更新：" + (d.updated_at || "—") + " · 上次心跳：" + (d.last_heartbeat_at || "—");
+      `最近更新：${data.updated_at || "—"} · 上次心跳：${data.last_heartbeat_at || "—"}`;
     document.getElementById("activity").textContent =
-      (d.is_working ? "🫀 正在工作：" : "💤 当前空闲。") + (d.current_activity || "—");
-    const g = document.getElementById("grid");
-    g.innerHTML = "";
-    (d.tasks || []).forEach(t => {
-      const ms = t.milestones || [];
-      const doneN = ms.filter(m => m.done).length;
-      const pct = ms.length ? Math.round(doneN / ms.length * 100) : (t.status === "done" ? 100 : 0);
-      const c = document.createElement("div");
-      c.className = "card";
-      c.innerHTML = `<h2>${t.title}<span class="badge ${t.status}">${STATUS_LABEL[t.status] || t.status}</span></h2>
-        <div class="summary">${t.summary || ""}</div>
-        <div class="bar"><div style="width:${pct}%"></div></div>
-        ${ms.map(m => `<div class="ms ${m.done ? "ok" : "todo"}">${m.name}${m.note ? ` — ${m.note}` : ""}</div>`).join("")}
-        ${t.next ? `<div class="next">下一步：${t.next}</div>` : ""}`;
-      g.appendChild(c);
-    });
-  } catch (e) {
-    document.getElementById("meta").textContent = "加载失败：" + e;
+      (data.is_working ? "🫀 正在工作：" : "💤 当前空闲。") + (data.current_activity || "—");
+    document.getElementById("grid").replaceChildren(...currentTasks.map(renderTask));
+    renderHistory(history);
+  } catch (error) {
+    document.getElementById("meta").textContent = `加载失败：${error.message}`;
   }
 }
+
+document.getElementById("grid").addEventListener("click", async event => {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+  const card = button.closest(".card");
+  const taskId = card.dataset.id;
+  const task = currentTasks.find(item => item.id === taskId);
+  const action = button.dataset.action;
+
+  if (action === "edit") {
+    const existing = card.querySelector(".edit-panel");
+    if (existing) {
+      existing.remove();
+      button.textContent = "编辑";
+    } else if (task) {
+      card.appendChild(makeEditor(task, button));
+      button.textContent = "收起";
+    }
+    return;
+  }
+  if (action === "cancel") {
+    if (!confirm("确定取消这个任务吗？取消后会移入历史。")) return;
+    try {
+      await postTask(taskId, "cancel");
+      showNotice("任务已取消并移入历史");
+      await load();
+    } catch (error) {
+      showNotice(`取消失败：${error.message}`, true);
+    }
+    return;
+  }
+  const original = button.textContent;
+  try {
+    await postTask(taskId, action);
+    button.textContent = action === "refresh" ? "已请求" : "已提醒 ⏰";
+    button.disabled = true;
+    setTimeout(() => {
+      if (button.isConnected) {
+        button.textContent = original;
+        button.disabled = false;
+      }
+    }, 1600);
+  } catch (error) {
+    showNotice(`${action === "refresh" ? "刷新" : "提醒"}失败：${error.message}`, true);
+  }
+});
+
 load();
 setInterval(load, 30000);
 </script>

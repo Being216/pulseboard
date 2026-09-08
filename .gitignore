@@ -1,4 +1,2 @@
-visits.jsonl
-__pycache__/
-*.pyc
-.screenshots/
+_*.py
+_push_trace.log
