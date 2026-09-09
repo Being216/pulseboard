@@ -14,13 +14,27 @@
   .notice { min-height:18px; color:#7e9; font-size:13px; margin:8px 0 12px; }
   .notice.error { color:#e06a5a; }
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:14px; }
+  .task-groups { display:flex; flex-direction:column; gap:12px; }
+  .task-group { background:#131720; border:1px solid #232a36; border-radius:10px; overflow:hidden; }
+  .group-header { appearance:none; width:100%; display:flex; align-items:center; gap:9px; border:0; background:transparent; color:#e6e6e6; cursor:pointer; font:inherit; text-align:left; padding:13px 16px; }
+  .group-header:hover, .group-header:focus-visible { background:#1a202b; outline:none; }
+  .group-header:focus-visible { box-shadow:inset 0 0 0 2px #4a9eff; }
+  .group-chevron { color:#8290a5; font-size:13px; transition:transform .15s; }
+  .task-group.is-collapsed .group-chevron { transform:rotate(-90deg); }
+  .group-title { font-size:15px; font-weight:600; }
+  .group-count { color:#8b96a7; font-size:13px; font-weight:400; }
+  .group-list { padding:0 14px 14px; }
+  .group-list[hidden] { display:none; }
+  .group-empty { color:#646b77; font-size:13px; padding:4px 2px 2px; }
   .card { background:#161a22; border:1px solid #232a36; border-radius:10px; padding:16px; }
   .card h3 { font-size:15px; margin:0 0 6px; font-weight:600; }
   .title-line { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
   .badge { font-size:11px; padding:2px 8px; border-radius:10px; margin-left:4px; font-weight:400; white-space:nowrap; }
   .done { background:#1d3a2a; color:#5ad27f; }
+  .completed { background:#1d3a2a; color:#5ad27f; }
   .in_progress { background:#3a341d; color:#e0c35a; }
   .blocked { background:#3a1d1d; color:#e06a5a; }
+  .todo { background:#26292f; color:#9aa3b0; }
   .pending { background:#26292f; color:#9aa3b0; }
   .cancelled { background:#292b31; color:#858995; }
   .human-edited { color:#d8b56a; font-size:12px; font-weight:400; margin-left:3px; }
@@ -59,7 +73,7 @@
 <div class="meta" id="meta">加载中…</div>
 <div class="activity" id="activity"></div>
 <div class="notice" id="notice" aria-live="polite"></div>
-<div class="grid" id="grid"></div>
+<div class="task-groups" id="grid"></div>
 <section class="history" aria-labelledby="history-title">
   <h2 id="history-title">历史</h2>
   <div class="grid" id="history-grid"></div>
@@ -67,12 +81,24 @@
 <script>
 const STATUS_LABEL = {
   done: "已完成",
+  completed: "已完成",
   in_progress: "进行中",
   blocked: "受阻",
+  todo: "待办",
   pending: "待办",
   cancelled: "已取消"
 };
 const EDITABLE_STATUSES = ["pending", "in_progress", "blocked", "done"];
+const TASK_GROUPS = [
+  {key: "in_progress", label: "进行中", statuses: ["in_progress"], defaultOpen: true},
+  {key: "todo", label: "待办", statuses: ["todo", "pending"], defaultOpen: true},
+  {key: "blocked", label: "受阻", statuses: ["blocked"], defaultOpen: false},
+  {key: "done", label: "已完成", statuses: ["done", "completed"], defaultOpen: false}
+];
+const GROUP_STATE_STORAGE_KEY = "pulseboard.groupState.v03";
+const DEFAULT_GROUP_OPEN = Object.freeze(
+  Object.fromEntries(TASK_GROUPS.map(group => [group.key, group.defaultOpen]))
+);
 let noticeTimer;
 let currentTasks = [];
 
@@ -86,6 +112,80 @@ function textElement(tag, className, text) {
 function statusBadge(status) {
   return textElement("span", `badge ${status || "pending"}`, STATUS_LABEL[status] || status || "未知");
 }
+
+function taskTimestamp(task, fields) {
+  for (const field of fields) {
+    const value = task && task[field];
+    if (value === undefined || value === null || value === "") continue;
+    const timestamp = typeof value === "number" ? value : Date.parse(String(value));
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  return null;
+}
+
+function sortTasksForGroup(group, tasks) {
+  if (group.key !== "in_progress" && group.key !== "done") return tasks.slice();
+  const fields = group.key === "in_progress"
+    ? ["updated_at", "updatedAt"]
+    : [
+        "completed_at", "completedAt", "completion_time", "completionTime",
+        "finished_at", "finishedAt", "done_at", "doneAt",
+        "updated_at", "updatedAt"
+      ];
+  return tasks
+    .map((task, index) => ({task, index, timestamp: taskTimestamp(task, fields)}))
+    .sort((left, right) => {
+      if (left.timestamp === null && right.timestamp === null) return left.index - right.index;
+      if (left.timestamp === null) return 1;
+      if (right.timestamp === null) return -1;
+      return right.timestamp - left.timestamp || left.index - right.index;
+    })
+    .map(item => item.task);
+}
+
+function statusGroupKey(status) {
+  const group = TASK_GROUPS.find(item => item.statuses.includes(status));
+  return group ? group.key : "todo";
+}
+
+function groupTasks(tasks) {
+  const grouped = {};
+  TASK_GROUPS.forEach(group => { grouped[group.key] = []; });
+  (Array.isArray(tasks) ? tasks : []).forEach(task => {
+    grouped[statusGroupKey(task && task.status)].push(task);
+  });
+  TASK_GROUPS.forEach(group => {
+    grouped[group.key] = sortTasksForGroup(group, grouped[group.key]);
+  });
+  return grouped;
+}
+
+function normalizedGroupOpenState(value) {
+  const state = {...DEFAULT_GROUP_OPEN};
+  if (!value || typeof value !== "object") return state;
+  TASK_GROUPS.forEach(group => {
+    if (typeof value[group.key] === "boolean") state[group.key] = value[group.key];
+  });
+  return state;
+}
+
+function readGroupOpenState() {
+  try {
+    return normalizedGroupOpenState(JSON.parse(localStorage.getItem(GROUP_STATE_STORAGE_KEY) || "null"));
+  } catch (_) {
+    return {...DEFAULT_GROUP_OPEN};
+  }
+}
+
+function writeGroupOpenState(state) {
+  try {
+    localStorage.setItem(GROUP_STATE_STORAGE_KEY, JSON.stringify(normalizedGroupOpenState(state)));
+  } catch (_) {
+    // 存储不可用时仍允许本次页面内展开/收起。
+  }
+}
+
+window.PulseboardV03 = {groupTasks, DEFAULT_GROUP_OPEN, GROUP_STATE_STORAGE_KEY};
 
 function showNotice(message, error = false) {
   const notice = document.getElementById("notice");
@@ -110,7 +210,8 @@ async function postTask(id, action, body = {}) {
 function renderMilestones(card, task) {
   const milestones = task.milestones || [];
   const doneCount = milestones.filter(milestone => milestone.done).length;
-  const percent = milestones.length ? Math.round(doneCount / milestones.length * 100) : (task.status === "done" ? 100 : 0);
+  const isDone = task.status === "done" || task.status === "completed";
+  const percent = milestones.length ? Math.round(doneCount / milestones.length * 100) : (isDone ? 100 : 0);
   const bar = document.createElement("div");
   bar.className = "bar";
   const fill = document.createElement("div");
@@ -218,6 +319,60 @@ function renderTask(task) {
   return card;
 }
 
+function renderTaskGroups(tasks) {
+  const grid = document.getElementById("grid");
+  const grouped = groupTasks(tasks);
+  const openState = readGroupOpenState();
+  const sections = TASK_GROUPS.map(group => {
+    const groupTasksList = grouped[group.key];
+    const isOpen = openState[group.key];
+    const listId = `task-group-${group.key}`;
+    const section = document.createElement("section");
+    section.className = `task-group${isOpen ? "" : " is-collapsed"}`;
+    section.dataset.groupKey = group.key;
+
+    const header = document.createElement("button");
+    header.type = "button";
+    header.className = "group-header";
+    header.dataset.groupKey = group.key;
+    header.setAttribute("aria-expanded", String(isOpen));
+    header.setAttribute("aria-controls", listId);
+    header.appendChild(textElement("span", "group-chevron", "▾"));
+    header.appendChild(textElement("span", "group-title", group.label));
+    header.appendChild(textElement("span", "group-count", `（${groupTasksList.length}）`));
+    section.appendChild(header);
+
+    const list = document.createElement("div");
+    list.className = "group-list";
+    list.id = listId;
+    list.hidden = !isOpen;
+    if (!groupTasksList.length) {
+      list.appendChild(textElement("div", "group-empty", "暂无任务"));
+    } else {
+      const cardGrid = document.createElement("div");
+      cardGrid.className = "grid";
+      cardGrid.replaceChildren(...groupTasksList.map(renderTask));
+      list.appendChild(cardGrid);
+    }
+    section.appendChild(list);
+    return section;
+  });
+  grid.replaceChildren(...sections);
+}
+
+function toggleTaskGroup(groupKey, header) {
+  const section = header.closest(".task-group");
+  const list = document.getElementById(`task-group-${groupKey}`);
+  if (!section || !list) return;
+  const isOpen = header.getAttribute("aria-expanded") !== "true";
+  header.setAttribute("aria-expanded", String(isOpen));
+  section.classList.toggle("is-collapsed", !isOpen);
+  list.hidden = !isOpen;
+  const state = readGroupOpenState();
+  state[groupKey] = isOpen;
+  writeGroupOpenState(state);
+}
+
 function renderHistory(history) {
   const grid = document.getElementById("history-grid");
   grid.replaceChildren();
@@ -252,7 +407,7 @@ async function load() {
       `最近更新：${data.updated_at || "—"} · 上次心跳：${data.last_heartbeat_at || "—"}`;
     document.getElementById("activity").textContent =
       (data.is_working ? "🫀 正在工作：" : "💤 当前空闲。") + (data.current_activity || "—");
-    document.getElementById("grid").replaceChildren(...currentTasks.map(renderTask));
+    renderTaskGroups(currentTasks);
     renderHistory(history);
   } catch (error) {
     document.getElementById("meta").textContent = `加载失败：${error.message}`;
@@ -260,6 +415,11 @@ async function load() {
 }
 
 document.getElementById("grid").addEventListener("click", async event => {
+  const header = event.target.closest(".group-header");
+  if (header) {
+    toggleTaskGroup(header.dataset.groupKey, header);
+    return;
+  }
   const button = event.target.closest("button[data-action]");
   if (!button) return;
   const card = button.closest(".card");
