@@ -1,2 +1,3 @@
-_*.py
-_push_trace.log
+__pycache__/
+*.pyc
+server.log
